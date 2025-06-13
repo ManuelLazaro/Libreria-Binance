@@ -13,6 +13,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 
 public class BinanceConnector {
+
     private final String apiKey;
     private final String secretKey;
     private final String baseUrl;
