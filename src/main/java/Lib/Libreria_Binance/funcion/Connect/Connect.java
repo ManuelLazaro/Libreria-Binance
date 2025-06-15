@@ -12,17 +12,35 @@ import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
 import java.util.Map;
-import java.util.StringJoiner;
 
 public class Connect {
     private final String apiKey;
     private final String secretKey;
     private final HttpClient client;
-    private static final String BASE_URL = "https://api.binance.com";
+    private final String baseUrl;
 
+    // URLs para producción y testing
+    private static final String PROD_URL = "https://api.binance.com";
+    private static final String TEST_URL = "https://testnet.binance.vision";
+
+    // Constructor para producción (comportamiento por defecto)
     public Connect(String apiKey, String secretKey) {
+        this(apiKey, secretKey, false);
+    }
+
+    // Constructor que permite especificar si es testing
+    public Connect(String apiKey, String secretKey, boolean isTestnet) {
         this.apiKey = apiKey;
         this.secretKey = secretKey;
+        this.baseUrl = isTestnet ? TEST_URL : PROD_URL;
+        this.client = HttpClient.newHttpClient();
+    }
+
+    // Constructor que permite especificar URL personalizada
+    public Connect(String apiKey, String secretKey, String customBaseUrl) {
+        this.apiKey = apiKey;
+        this.secretKey = secretKey;
+        this.baseUrl = customBaseUrl;
         this.client = HttpClient.newHttpClient();
     }
 
@@ -32,7 +50,7 @@ public class Connect {
 
         String queryString = buildQueryString(params);
         String signature = generateSignature(queryString);
-        String finalUrl = BASE_URL + endpoint + "?" + queryString + "&signature=" + signature;
+        String finalUrl = baseUrl + endpoint + "?" + queryString + "&signature=" + signature;
 
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(finalUrl))
@@ -44,14 +62,28 @@ public class Connect {
         return response.body();
     }
 
+    // Método para requests públicos (sin firma)
+    public String publicRequest(String endpoint, Map<String, String> params) throws IOException, InterruptedException {
+        String queryString = params.isEmpty() ? "" : "?" + buildQueryString(params);
+        String finalUrl = baseUrl + endpoint + queryString;
+
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(finalUrl))
+                .GET()
+                .build();
+
+        HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        return response.body();
+    }
+
     private String buildQueryString(Map<String, String> params) {
         StringBuilder sb = new StringBuilder();
         for (Map.Entry<String, String> entry : params.entrySet()) {
-            sb.append(entry.getKey()).append("=").append(entry.getValue()).append("&");
+            if (sb.length() > 0) sb.append("&");
+            sb.append(entry.getKey()).append("=").append(entry.getValue());
         }
         return sb.toString();
     }
-
 
     private String generateSignature(String data) {
         try {
@@ -71,4 +103,12 @@ public class Connect {
         }
     }
 
+    // Método útil para saber si estamos en testnet
+    public boolean isTestnet() {
+        return TEST_URL.equals(baseUrl);
+    }
+
+    public String getBaseUrl() {
+        return baseUrl;
+    }
 }
