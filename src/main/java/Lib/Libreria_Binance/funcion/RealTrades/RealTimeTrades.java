@@ -3,20 +3,21 @@ package Lib.Libreria_Binance.funcion.RealTrades;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import java.math.BigDecimal;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.WebSocket;
 import java.time.Instant;
 import java.util.concurrent.*;
-import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 public class RealTimeTrades implements WebSocket.Listener {
 
     private static final String BINANCE_WS_URL = "wss://stream.binance.com:9443/ws/";
     private final String symbol;
 
-    private final AtomicInteger buyCount = new AtomicInteger(0);
-    private final AtomicInteger sellCount = new AtomicInteger(0);
+    private final AtomicReference<BigDecimal> buyTotal = new AtomicReference<>(BigDecimal.ZERO);
+    private final AtomicReference<BigDecimal> sellTotal = new AtomicReference<>(BigDecimal.ZERO);
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     public RealTimeTrades(String symbol) {
@@ -34,9 +35,10 @@ public class RealTimeTrades implements WebSocket.Listener {
     private void startPrintStats() {
         ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
         scheduler.scheduleAtFixedRate(() -> {
-            int buys = buyCount.getAndSet(0);
-            int sells = sellCount.getAndSet(0);
-            System.out.println("📊 [" + Instant.now() + "] ➤ Compras: " + buys + " | Ventas: " + sells);
+            BigDecimal buys = buyTotal.getAndSet(BigDecimal.ZERO);
+            BigDecimal sells = sellTotal.getAndSet(BigDecimal.ZERO);
+            System.out.printf("📊 [%s] ➤ Compras: $%,.2f | Ventas: $%,.2f%n",
+                    Instant.now(), buys, sells);
         }, 1, 1, TimeUnit.SECONDS);
     }
 
@@ -50,12 +52,18 @@ public class RealTimeTrades implements WebSocket.Listener {
     public CompletionStage<?> onText(WebSocket webSocket, CharSequence data, boolean last) {
         try {
             JsonNode json = objectMapper.readTree(data.toString());
-            boolean isSell = json.get("m").asBoolean();
+            boolean isSell = json.get("m").asBoolean(); // m=true = venta, false = compra
+            BigDecimal price = new BigDecimal(json.get("p").asText()); // precio
+            BigDecimal qty = new BigDecimal(json.get("q").asText());   // cantidad
+
+            BigDecimal total = price.multiply(qty); // valor en USD
+
             if (isSell) {
-                sellCount.incrementAndGet();
+                sellTotal.updateAndGet(v -> v.add(total));
             } else {
-                buyCount.incrementAndGet();
+                buyTotal.updateAndGet(v -> v.add(total));
             }
+
         } catch (Exception e) {
             System.err.println("❌ Error al parsear mensaje: " + e.getMessage());
         }
